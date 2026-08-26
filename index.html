@@ -1,115 +1,294 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Authenticator — TOTP</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔒</text></svg>">
-  <meta name="description" content="Time-based One-Time Password (TOTP) authenticator with local storage." />
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            brand: {
-              DEFAULT: '#6366f1',
-              50: '#eef2ff',
-              400: '#818cf8',
-              500: '#6366f1',
-              600: '#4f46e5',
-            }
-          },
-          fontFamily: {
-            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
-          }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authenticator</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
         }
-      }
-    }
-  </script>
-  <style>
-    body { -webkit-tap-highlight-color: transparent; }
-    .otp-digit { font-variant-numeric: tabular-nums; letter-spacing: 0.12em; }
-    /* subtle fade for value changes */
-    @keyframes pop { 0% { transform: scale(0.96); opacity: .4 } 100% { transform: scale(1); opacity: 1 } }
-    .pop { animation: pop .25s ease-out; }
-  </style>
+
+        body {
+            background-color: #0b0f19;
+            color: #f1f5f9;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 24px 16px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 400px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 4px 4px 4px;
+        }
+
+        h1 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: #f8fafc;
+        }
+
+        .add-btn {
+            background: #2563eb;
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 14px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s ease, transform 0.1s ease;
+        }
+
+        .add-btn:active {
+            transform: scale(0.96);
+            background: #1d4ed8;
+        }
+
+        .cards-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 48px 16px;
+            color: #475569;
+            font-size: 0.9rem;
+        }
+
+        .card {
+            background: #131b2e;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 12px 16px 14px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            user-select: none;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .serial {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #38bdf8;
+            background: rgba(56, 189, 248, 0.12);
+            padding: 2px 8px;
+            border-radius: 6px;
+            letter-spacing: 0.05em;
+        }
+
+        .delete-btn {
+            background: transparent;
+            border: none;
+            color: #475569;
+            font-size: 1.1rem;
+            cursor: pointer;
+            line-height: 1;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: color 0.15s ease;
+        }
+
+        .delete-btn:hover {
+            color: #ef4444;
+        }
+
+        .otp-current {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 2rem;
+            font-weight: 800;
+            letter-spacing: 0.18em;
+            color: #f8fafc;
+            line-height: 1.1;
+            cursor: pointer;
+            transition: opacity 0.15s ease;
+        }
+
+        .otp-current:active {
+            opacity: 0.6;
+        }
+
+        .otp-upcoming {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #64748b;
+            letter-spacing: 0.1em;
+        }
+
+        .progress-container {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 100%;
+            background: #38bdf8;
+            transform-origin: left;
+        }
+
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            z-index: 100;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+
+        .modal-backdrop.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal {
+            background: #131b2e;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 14px;
+            width: 100%;
+            max-width: 340px;
+            padding: 20px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.6);
+            transform: scale(0.95);
+            transition: transform 0.2s ease;
+        }
+
+        .modal-backdrop.open .modal {
+            transform: scale(1);
+        }
+
+        .modal form {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .modal input {
+            background: #090d16;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 0.95rem;
+            color: #f8fafc;
+            outline: none;
+            font-family: inherit;
+        }
+
+        .modal input:focus {
+            border-color: #38bdf8;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        .btn-secondary {
+            background: transparent;
+            border: 1px solid #334155;
+            color: #94a3b8;
+            border-radius: 8px;
+            padding: 8px 14px;
+            font-size: 0.875rem;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: #2563eb;
+            border: none;
+            color: #ffffff;
+            border-radius: 8px;
+            padding: 8px 14px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            background: #1e293b;
+            color: #38bdf8;
+            border: 1px solid rgba(56, 189, 248, 0.4);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            pointer-events: none;
+            z-index: 200;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
 </head>
-<body class="dark bg-slate-950 text-slate-100 min-h-screen antialiased">
-  <div class="max-w-3xl mx-auto px-4 py-8 sm:py-12">
-
-    <!-- Header -->
-    <header class="flex items-center justify-between mb-8">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-brand-600/20 ring-1 ring-brand-500/40 flex items-center justify-center">
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-brand-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 0h10.5a2.25 2.25 0 0 1 2.25 2.25v6.75a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5v-6.75a2.25 2.25 0 0 1 2.25-2.25Z" />
-          </svg>
-        </div>
-        <div>
-          <h1 class="text-xl sm:text-2xl font-semibold tracking-tight">Authenticator</h1>
-          <p class="text-xs text-slate-400">Time-based One-Time Passwords · stored locally</p>
-        </div>
-      </div>
-    </header>
-
-    <!-- Add new secret -->
-    <section class="bg-slate-900/60 ring-1 ring-slate-800 rounded-2xl p-4 sm:p-5 mb-6">
-      <form id="addForm" class="flex flex-col sm:flex-row gap-3">
-        <input
-          id="labelInput"
-          type="text"
-          maxlength="40"
-          placeholder="Label (e.g. GitHub)"
-          class="flex-1 bg-slate-950/80 ring-1 ring-slate-800 focus:ring-brand-500 rounded-lg px-3 py-2.5 text-sm outline-none transition placeholder:text-slate-500"
-        />
-        <input
-          id="secretInput"
-          type="text"
-          placeholder="Secret (Base32)"
-          autocomplete="off"
-          spellcheck="false"
-          class="flex-[2] bg-slate-950/80 ring-1 ring-slate-800 focus:ring-brand-500 rounded-lg px-3 py-2.5 text-sm font-mono outline-none transition placeholder:text-slate-500 uppercase"
-        />
-        <button type="submit" class="bg-brand-600 hover:bg-brand-500 active:scale-[0.98] text-white font-medium text-sm rounded-lg px-4 py-2.5 transition">
-          Add
-        </button>
-      </form>
-      <p class="mt-3 text-[11px] text-slate-500 leading-relaxed">
-        Secrets are stored only in your browser (localStorage). Accounts not used for 7 days are removed automatically.
-      </p>
-    </section>
-
-    <!-- List of accounts -->
-    <section id="list" class="space-y-3"></section>
-
-    <!-- Empty state -->
-    <div id="empty" class="hidden text-center py-16">
-      <div class="mx-auto w-12 h-12 rounded-full bg-slate-900 ring-1 ring-slate-800 flex items-center justify-center mb-4">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-        </svg>
-      </div>
-      <p class="text-slate-400 text-sm">No accounts yet</p>
-      <p class="text-slate-600 text-xs mt-1">Add a secret key above to get started.</p>
+<body>
+    <div class="container">
+        <header>
+            <h1>Authenticator</h1>
+            <button class="add-btn" id="openModalBtn">+ Add</button>
+        </header>
+        <div class="cards-list" id="cardsList"></div>
     </div>
 
-    <!-- Clear all -->
-    <div id="clearWrap" class="hidden mt-8 flex justify-center">
-      <button id="clearAll" class="text-xs text-rose-400/80 hover:text-rose-300 hover:underline underline-offset-4 transition">
-        Clear all accounts
-      </button>
+    <div class="modal-backdrop" id="modal">
+        <div class="modal">
+            <form id="addForm">
+                <input type="text" id="secretInput" placeholder="Secret Key" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" required>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" id="cancelModalBtn">Cancel</button>
+                    <button type="submit" class="btn-primary">Add</button>
+                </div>
+            </form>
+        </div>
     </div>
 
-    <footer class="mt-10 text-center text-[11px] text-slate-600">
-      RFC 6238 TOTP · 6 digits · 30s · HMAC-SHA1 · SHA-256 (WebCrypto)
-    </footer>
-  </div>
+    <div class="toast" id="toast">Copied</div>
 
-  <!-- Toast -->
-  <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 translate-y-4 opacity-0 pointer-events-none transition-all duration-300 bg-slate-800 ring-1 ring-slate-700 text-slate-100 text-sm px-4 py-2 rounded-lg shadow-xl z-50"></div>
-
-  <script src="app.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>
